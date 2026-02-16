@@ -40,7 +40,6 @@ export interface AppStateData {
   apiBaseUrl: string;
   semantics: string;
   afDepth: number;
-  afBreadth: number;
   messages: Message[];
   chatInput: string;
   finalAF: ArgumentationFramework | null;

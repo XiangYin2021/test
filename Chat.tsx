@@ -12,15 +12,16 @@ import {
   selectApiKey,
   selectSemantics,
   selectAfDepth,
-  selectAfBreadth,
-  finalAFReceived,
+    finalAFReceived,
 } from "../../features/app/appStateSlice";
-import { IoDocumentAttachOutline, IoCloseCircleSharp } from "react-icons/io5";
+import {
+  IoDocumentAttachOutline,
+  IoCloseCircleSharp
+} from "react-icons/io5";
 
 import {
   ArgumentationFramework,
-  ArgumentMiningResult,
-  AttachedFile,
+  ArgumentMiningResult, AttachedFile,
   Message,
   MessageResult,
 } from "../../types";
@@ -30,16 +31,14 @@ function attachFile(apiBaseUrl: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const attachResult: Promise<AttachedFile> = fetch(
-    apiBaseUrl + "/arguments/attach",
-    {
-      method: "POST",
-      body: formData as BodyInit,
-    }
-  ).then((response) => response.json());
+  const attachResult: Promise<AttachedFile> = fetch(apiBaseUrl + "/arguments/attach", {
+    method: "POST",
+    body: formData as BodyInit,
+  }).then((response) => response.json());
 
   return attachResult;
 }
+
 
 function mineArguments(
   apiBaseUrl: string,
@@ -47,7 +46,6 @@ function mineArguments(
   apiKey: string,
   semantics = "dfquad",
   afDepth = 1,
-  afBreadth = 1,
   attachedFiles: string[]
 ) {
   const miningResult: Promise<ArgumentMiningResult> = fetch(
@@ -60,8 +58,7 @@ function mineArguments(
         api_key: apiKey,
         semantics: semantics,
         depth: afDepth,
-        breadth: afBreadth,
-        files: attachedFiles,
+        files: attachedFiles
       }),
     }
   ).then((response) => response.json());
@@ -154,10 +151,7 @@ export default function Chat() {
   const apiKey = useSelector(selectApiKey);
   const semantics = useSelector(selectSemantics);
   const afDepth = useSelector(selectAfDepth);
-  const afBreadth = useSelector(selectAfBreadth);
-  const [attachedFiles, setAttachedFiles] = useState<Record<string, string>>(
-    {}
-  );
+  const [attachedFiles, setAttachedFiles] = useState<Record<string, string>>({});
 
   const constructSocket = useCallback(
     (token: string) => {
@@ -179,10 +173,12 @@ export default function Chat() {
           updateFramework(result.af);
         } else if (status === "completed") {
           updateFramework(result.af);
-          dispatch(finalAFReceived(result.af));
+
+
+            dispatch(finalAFReceived(result.af));
           const aiResponse = {
             sender: "ai",
-            text: `I have finished reasoning about your input. Overall, my final confidence in the provided input is ${result.prediction}%. See the arguments on the right for details. Feel free to let me know if you have any thoughts on the arguments, and I will update my prediction accordingly.`,
+            text: `I have finished reasoning about your input. Overall, my confidence in the provided input is ${result.prediction}%. See the arguments on the right for details. Feel free to let me know if you have any thoughts on the arguments, and I will update my prediction accordingly.`,
           };
           dispatch(addMessage(aiResponse));
         } else if (status === "failed") {
@@ -240,33 +236,27 @@ export default function Chat() {
 
     if (messages.length == 1) {
       // New topic, mine arguments
-      mineArguments(
-        apiBaseUrl,
-        chatInput,
-        apiKey,
-        semantics,
-        afDepth,
-        afBreadth,
-        Object.values(attachedFiles)
-      ).then((result) => {
-        console.log("Received result from mining:");
-        console.log(result);
-        const status = result.status;
-        if (status === "started") {
-          constructSocket(result.token);
-          const aiResponse = {
-            sender: "ai",
-            text: "Ok, please hold on while I reason about your input...",
-          };
-          dispatch(addMessage(aiResponse));
-        } else {
-          const aiResponse = {
-            sender: "ai",
-            text: "Something unexpected happened, please reload and try again.",
-          };
-          dispatch(addMessage(aiResponse));
+      mineArguments(apiBaseUrl, chatInput, apiKey, semantics, afDepth, Object.values(attachedFiles)).then(
+        (result) => {
+          console.log("Received result from mining:");
+          console.log(result);
+          const status = result.status;
+          if (status === "started") {
+            constructSocket(result.token);
+            const aiResponse = {
+              sender: "ai",
+              text: "Ok, please hold on while I reason about your input...",
+            };
+            dispatch(addMessage(aiResponse));
+          } else {
+            const aiResponse = {
+              sender: "ai",
+              text: "Something unexpected happened, please reload and try again.",
+            };
+            dispatch(addMessage(aiResponse));
+          }
         }
-      });
+      );
     } else {
       const updatedMessages = [...messages, newMessage];
       processMessage(apiBaseUrl, updatedMessages, getFramework(), apiKey).then(
@@ -282,41 +272,38 @@ export default function Chat() {
       );
     }
   };
-
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       handleSend();
     }
   };
-
-  const onAttachClick = () => {
+    const onAttachClick = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".pdf";
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        attachFile(apiBaseUrl, file).then((fileText) => {
+                attachFile(apiBaseUrl, file).then((fileText) => {
           const parsedText = fileText.parsed_content;
           console.log("Attached file parsed content:", parsedText);
-          setAttachedFiles((prev) => ({
+          setAttachedFiles(prev => ({
             ...prev,
-            [file.name]: parsedText,
+            [file.name]: parsedText
           }));
         });
       }
     };
     input.click();
-  };
+  }
 
-  const onRemoveAttachClick = (fileKey: string) => {
-    setAttachedFiles((prev) => {
-      const newFiles = { ...prev };
-      delete newFiles[fileKey];
-      return newFiles;
-    });
-  };
-
+    const onRemoveAttachClick = (fileKey: string) => {
+        setAttachedFiles(prev => {
+        const newFiles = { ...prev };
+        delete newFiles[fileKey];
+        return newFiles;
+        });
+    }
   return (
     <div className="chat-container">
       <div className="chat-window">
@@ -326,23 +313,22 @@ export default function Chat() {
           </div>
         ))}
       </div>
-      {Object.keys(attachedFiles).length > 0 && (
-        <ul>
-          {Object.entries(attachedFiles).map(([key, _]) => (
-            <li key={key}>
-              {key}
-              <button onClick={() => onRemoveAttachClick(key)}>
-                <IoCloseCircleSharp size={16} />
-              </button>
-            </li>
-          ))}
-        </ul>
+        {Object.keys(attachedFiles).length > 0 && (
+          <ul>
+            {Object.entries(attachedFiles).map(([key]) => (
+                <li key={key}>
+                  {key}
+                  <button onClick={() => onRemoveAttachClick(key)}>
+                    <IoCloseCircleSharp size={16} />
+                  </button>
+                </li>
+            ))}
+          </ul>
       )}
       <div className="chat-input">
-        <button aria-label={"attach"} onClick={() => onAttachClick()}>
+          <button aria-label={"attach"} onClick={() => onAttachClick()}>
           <IoDocumentAttachOutline size={24} />
         </button>
-
         <input
           type="text"
           value={chatInput}
