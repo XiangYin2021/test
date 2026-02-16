@@ -29,34 +29,36 @@ import {
   NumberDecrementStepper,
   NumberInputStepper,
   VStack,
+
 } from "@chakra-ui/react";
+
 
 import { selectFinalAF } from "../../features/app/appStateSlice";
 import { FiFile, FiEdit, FiSettings } from "react-icons/fi";
 import { BiExport, BiImport } from "react-icons/bi";
 import { motion } from "framer-motion";
+
 import {ArgumentationFramework, ArgumentData} from "../../types";
 
 import Tree from "../Graph/Tree";
 import Chat from "../Chat/Chat";
 import { IconType } from "react-icons";
 import { useCallback, useState, useEffect } from "react";
+
 import { useDispatch, useSelector } from "react-redux";
+import { selectFramework } from "../../features/argumentation/argumentationSlice";
 import {
   addMessage,
   selectAfDepth,
-  selectAfBreadth,
   selectApiBaseUrl,
   selectApiKey,
   selectSemantics,
   setAfDepth,
-  setAfBreadth,
   setApiBaseUrl,
   setApiKey,
   setSemantics,
   startNewChat,
   setChatInput,
-  resetSettings,
 } from "../../features/app/appStateSlice";
 import useArgumentationFramework from "../Graph/hooks/useArgumentationFramework";
 import APIService from "../APIService";
@@ -158,8 +160,17 @@ export default function App() {
   );
 }
 
+
 const SidebarContent = ({ ...rest }: BoxProps) => {
+
+
+
+
 const finalAF = useSelector(selectFinalAF);
+const currentAF = useSelector(selectFramework);
+
+
+
   const { isOpen, onOpen, onClose } = useDisclosure();
   const {
     isOpen: examplesIsOpen,
@@ -176,7 +187,7 @@ const finalAF = useSelector(selectFinalAF);
   const [claims, setClaims] = useState<string[]>([]);
   const [hypothesisLoading, setHypothesisLoading] = useState(false);
 
-const [claimResults, setClaimResults] = useState<
+  const [claimResults, setClaimResults] = useState<
     Record<
       number,
       {
@@ -187,31 +198,36 @@ const [claimResults, setClaimResults] = useState<
     >
   >({});
   const [activeClaimIndex, setActiveClaimIndex] = useState<number | null>(null);
-  const sortedClaims = claims
-      .map((claim, index) => ({
-          claim,
-          index,
-          strength: claimResults[index]?.strength,
-      }))
-      .sort((a, b) => {
-          // no strength → original order
-          if (a.strength === undefined && b.strength === undefined) {
-              return a.index - b.index;
-          }
+  const [currentClaimIndex, setCurrentClaimIndex] = useState<number | null>(null);
 
-          // one has strength → that one first
-          if (a.strength === undefined) return 1;
-          if (b.strength === undefined) return -1;
 
-          // both have strength → sort by strength
-          return b.strength - a.strength;
-      });
+const sortedClaims = claims
+  .map((claim, index) => ({
+    claim,
+    index,
+    strength: claimResults[index]?.strength,
+  }))
+  .sort((a, b) => {
+    // ✅ 都没 strength → 保持原顺序
+    if (a.strength === undefined && b.strength === undefined) {
+      return a.index - b.index;
+    }
+
+    // ✅ 一个有一个没有 → 有的在前
+    if (a.strength === undefined) return 1;
+    if (b.strength === undefined) return -1;
+
+    // ✅ 都有 → strength 降序
+    return b.strength - a.strength;
+  });
+
+
+
   const dispatch = useDispatch();
   const apiKey = useSelector(selectApiKey);
   const apiBaseUrl = useSelector(selectApiBaseUrl);
   const semantics = useSelector(selectSemantics);
   const afDepth = useSelector(selectAfDepth);
-  const afBreadth = useSelector(selectAfBreadth);
   const { updateFramework, getFramework, resetFramework, evalFramework } =
     useArgumentationFramework();
 
@@ -265,27 +281,62 @@ const [claimResults, setClaimResults] = useState<
       examplesOnOpen,
     ]
   );
-    useEffect(() => {
-      if (activeClaimIndex === null) return;
-      if (!finalAF || !finalAF.arguments) return;
 
-        const topic = Object.values(finalAF.arguments).find(
-          (arg: ArgumentData) => arg.provenance === "topic"
-        );
 
-      if (!topic) return;
+  useEffect(() => {
+  if (activeClaimIndex === null) return;
+  if (!finalAF || !finalAF.arguments) return;
 
-      setClaimResults((prev) => ({
-        ...prev,
-        [activeClaimIndex]: {
-          status: "done",
-          strength: topic.strength,
-          af: finalAF,
-        },
-      }));
+    const topic = Object.values(finalAF.arguments).find(
+      (arg: ArgumentData) => arg.provenance === "topic"
+    );
 
-      setActiveClaimIndex(null);
-    }, [finalAF]);
+  if (!topic) return;
+
+  setClaimResults((prev) => ({
+    ...prev,
+    [activeClaimIndex]: {
+      status: "done",
+      strength: topic.strength,   // ✅ 一定是 final strength
+      af: finalAF,                // ✅ 一定是 final AF
+    },
+  }));
+
+  setActiveClaimIndex(null);
+}, [finalAF]);
+
+useEffect(() => {
+  if (currentClaimIndex === null) return;
+
+  const r = claimResults[currentClaimIndex];
+  if (!r || r.status !== "done") return;
+
+  // 从 currentAF 里取 topic strength（用 provenance 更稳）
+  const topic = currentAF?.arguments
+    ? Object.values(currentAF.arguments).find((a: any) => a.provenance === "topic")
+    : null;
+
+  const latestStrength =
+    topic && typeof (topic as any).strength === "number"
+      ? (topic as any).strength
+      : r.strength; // fallback
+
+  const t = window.setTimeout(() => {
+    setClaimResults((prev) => ({
+      ...prev,
+      [currentClaimIndex]: {
+        ...prev[currentClaimIndex],
+        af: currentAF,
+        strength: latestStrength, // ✅ 同步更新显示用的 strength
+      },
+    }));
+  }, 200);
+
+  return () => window.clearTimeout(t);
+}, [currentAF, currentClaimIndex, claimResults]);
+
+
+
   const loadExample = useCallback(
     (name: string) => {
       console.log("Loading", name);
@@ -455,46 +506,57 @@ const [claimResults, setClaimResults] = useState<
     },
     [updateFramework, evalFramework, dispatch]
   );
-      const handleAskHypotheses = useCallback(async () => {
-        if (!hypothesisQuestion.trim()) return;
-        setHypothesisLoading(true);
-        try {
-          const res = await APIService.AskHypotheses(hypothesisQuestion);
-          console.log("Claims only:", res.claims);
-          setClaims(res.claims || []);
-          setClaimResults({});
-          setActiveClaimIndex(null);
-        } catch (e) {
-          console.error(e);
-          setClaims(["Calling API Failed"]);
-        } finally {
-          setHypothesisLoading(false);
-        }
-      }, [hypothesisQuestion]);
 
-    const handleClaimClick = (claim: string, index: number) => {
-      const result = claimResults[index];
-      if (result) {
-        if (result.status === "done") {
-          updateFramework(result.af as ArgumentationFramework);
-        }
-        return;
-      }
-      setActiveClaimIndex(index);
-      setClaimResults((prev) => ({
-        ...prev,
-        [index]: { status: "running" },
-      }));
+  const handleAskHypotheses = useCallback(async () => {
+    if (!hypothesisQuestion.trim()) return;
+    setHypothesisLoading(true);
+    try {
+      const res = await APIService.AskHypotheses(hypothesisQuestion);
+      console.log("Claims only:", res.claims);
+      setClaims(res.claims || []);
+      setClaimResults({});
+      setActiveClaimIndex(null);
 
-      dispatch(startNewChat());
-      dispatch(setChatInput(claim));
+    } catch (e) {
+      console.error(e);
+      setClaims(["Calling API Failed"]);
+    } finally {
+      setHypothesisLoading(false);
+    }
+  }, [hypothesisQuestion]);
 
-      setTimeout(() => {
-        document
-          .querySelector(".chat-input button")
-          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      }, 0);
-    };
+const handleClaimClick = (claim: string, index: number) => {
+    closeHypothesisModal(); // ✅ 先关弹窗，防止遮罩挡住页面
+    setCurrentClaimIndex(index);
+  const result = claimResults[index];
+  if (result) {
+    if (result.status === "done") {
+        setCurrentClaimIndex(index);
+      updateFramework(result.af as ArgumentationFramework);
+    }
+    return;
+  }
+
+  // ✅ 第一次点：标记 active
+  setActiveClaimIndex(index);
+  setClaimResults((prev) => ({
+    ...prev,
+    [index]: { status: "running" },
+  }));
+
+  // ✅ 复用原来的 Chat 发送逻辑
+  dispatch(startNewChat());
+  dispatch(setChatInput(claim));
+
+setTimeout(() => {
+  const buttons = document.querySelectorAll<HTMLButtonElement>(".chat-input button");
+  buttons[buttons.length - 1]?.click();
+}, 0);
+
+};
+
+
+
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose}>
@@ -510,7 +572,6 @@ const [claimResults, setClaimResults] = useState<
               onChange={(e) => dispatch(setApiKey(e.target.value))}
               marginTop="10px"
               marginBottom="10px"
-              type="password"
             />
             <Text as="b">Use development server:</Text>
             <br />
@@ -525,13 +586,13 @@ const [claimResults, setClaimResults] = useState<
                   setApiBaseUrl(
                     e.target.checked
                       ? "http://127.0.0.1:5000"
-                      : "https://arg-llm-api-fef081a5b9e9.herokuapp.com"
+                      : "https://arg-llm-api-rag-acebe09e8eeb.herokuapp.com"
                   )
                 )
               }
             />
             <br />
-            <Text as="b">Argumentation gradual semantics:</Text>
+            <Text as="b">Argumentation semantics:</Text>
             <br />
             <Select
               value={semantics}
@@ -543,30 +604,14 @@ const [claimResults, setClaimResults] = useState<
               <option value="dfquad">DF-QuAD</option>
               <option value="eb">Euler-based</option>
             </Select>
-            <Text as="b">QBAF depth:</Text>
+            <Text as="b">AF depth:</Text>
             <br />
             <NumberInput
               value={afDepth}
               min={1}
               max={2}
               marginTop="10px"
-              marginBottom="10px"
               onChange={(v) => dispatch(setAfDepth(Math.round(Number(v))))}
-            >
-              <NumberInputField />
-              <NumberInputStepper>
-                <NumberIncrementStepper />
-                <NumberDecrementStepper />
-              </NumberInputStepper>
-            </NumberInput>
-            <Text as="b">QBAF breadth (max attackers/supporters)</Text>
-            <br />
-            <NumberInput
-              value={afBreadth}
-              min={1}
-              max={4}
-              marginTop="10px"
-              onChange={(v) => dispatch(setAfBreadth(Math.round(Number(v))))}
             >
               <NumberInputField />
               <NumberInputStepper>
@@ -576,13 +621,6 @@ const [claimResults, setClaimResults] = useState<
             </NumberInput>
           </ModalBody>
           <ModalFooter>
-            <Button
-              colorScheme="red"
-              onClick={() => dispatch(resetSettings())}
-              marginRight="10px"
-            >
-              Restore defaults
-            </Button>
             <Button colorScheme="cyan" color="white" onClick={onClose}>
               Close and save
             </Button>
@@ -625,18 +663,17 @@ const [claimResults, setClaimResults] = useState<
           </ModalFooter>
         </ModalContent>
       </Modal>
-
       {/* Claims Modal */}
       <Modal isOpen={hypothesisIsOpen} onClose={closeHypothesisModal} size="xl">
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>Claim Generator</ModalHeader>
-          <ModalCloseButton />
+          <ModalCloseButton onClick={closeHypothesisModal} />
           <ModalBody>
             <Text mb={2}>Enter your question:</Text>
 
             <Input
-              placeholder="e.g., Are bilayer tablets more common than granule blends?"
+              placeholder="e.g., are bilayer tablets more common than granule blends?"
               value={hypothesisQuestion}
               onChange={(e) => setHypothesisQuestion(e.target.value)}
               mb={4}
@@ -664,14 +701,14 @@ const [claimResults, setClaimResults] = useState<
               )}
 
               {sortedClaims.map(({ claim, index }) => (
-                  <motion.div
-                      key={claim}
-                      layout
+              <motion.div
+                      key={claim}          // ✅ 用 claim 做 key，比 index 稳定
+                      layout               // ✅ 自动位置动画
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.5 }}
-                  >
+              >
                 <Box
                   key={index}
                   p={3}
@@ -679,26 +716,27 @@ const [claimResults, setClaimResults] = useState<
                   borderColor="gray.200"
                   borderRadius="md"
                   bg="gray.50"
-                  cursor="pointer"
-                  transition="all 0.2s ease"
-                  _hover={{
+                  cursor="pointer"                // ✅ 鼠标变成可点击手型
+                  transition="all 0.2s ease"      // ✅ 过渡动画
+                  _hover={{                       // ✅ 悬浮高亮效果
                     bg: "cyan.50",
                     borderColor: "cyan.400",
                     boxShadow: "md",
                   }}
                   onClick={() => handleClaimClick(claim, index)}
                 >
+
                   <Text fontWeight="bold" display="flex" alignItems="center">
                       Claim {index + 1}
 
                       {claimResults[index]?.status === "running" && (
                         <Text ml={2} fontSize="sm" color="cyan.600">
-                          (reasoning...)
+                          (reasoning, please wait...)
                         </Text>
                       )}
                         {claimResults[index]?.status === "done" && (
                         <Text ml={2} fontSize="sm" color="green.600">
-                          Strength: {claimResults[index]?.strength}%
+                          Final Confidence: {claimResults[index]?.strength}%
                         </Text>
                       )}
                     </Text>
@@ -717,7 +755,6 @@ const [claimResults, setClaimResults] = useState<
           </ModalFooter>
         </ModalContent>
       </Modal>
-
       <Box
         bg={useColorModeValue("white", "gray.900")}
         borderRight="1px"
@@ -728,7 +765,7 @@ const [claimResults, setClaimResults] = useState<
       >
         <Flex h="20" alignItems="center" mx="8" justifyContent="space-between">
           <Text fontSize="lg" fontFamily="monospace" fontWeight="bold">
-            ArgLLM-App
+            ArgLLM-RAG
           </Text>
         </Flex>
         {LinkItems.map((link) => (
